@@ -1,0 +1,37 @@
+[package]
+name = "bermuda"
+version = "0.0.1"
+authors = ["François Bastien <fmrbastien@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "bermuda"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bermuda"
+path = "src/bin.rs"
+
+[dependencies]
+tokio = {version="~0.2.21", features=["full"]}
+clap = "2.33.3"
+ethabi = "12.0.0"
+web3 = "0.14.0"
+async-jsonrpc-client = "0.1.3"
+serde_json = "1.0.60"
+rustc-hex = "2.1.0"
+async-trait = "0.1.42"
+cli-table = "0.4"
+tera = "1"
+num-format = "0.4.0"
+serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]
+test-case = "2.0.0-rc3"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
