@@ -23,6 +23,7 @@ use num_format::{Locale, ToFormattedString};
 #[macro_use]
 extern crate tera;
 
+const EXP_FACTOR:f64 = 2.35;
 
 pub fn humanize(value: &Value, _: &HashMap<String, Value>) -> Result<Value> {
     let num = try_get_value!("humanize", "value", f64, value);
@@ -57,7 +58,7 @@ pub fn predict_up(current: &Prediction, base_price:f64) -> Result<Prediction> {
 }
 
 pub fn predict(current: &Prediction, next_price: f64) -> Result<Prediction> {
-    let exp_factor = 2.4;
+    let exp_factor = EXP_FACTOR;
     let next_factor = (current.price / next_price).powf(exp_factor);
     Ok(Prediction{
         price: next_price, 
