@@ -4,7 +4,7 @@ extern crate tera;
 
 use async_jsonrpc_client::HttpTransport;
 use ethabi::Address;
-use bermuda::{Aave, humanize, Prediction, predict_up, predict_down, predict};
+use bermuda::{Aave, humanize, Prediction, predict};
 use bermuda::BlockchainReader;
 use bermuda::{Chainlink, SmartWallet};
 use bermuda::ERC20;
@@ -74,8 +74,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 short,                                
                 long                                  
             };
-            let prediction_up = predict_up(&current, 2800.0)?;
-            let prediction_down = predict_down(&current, 2800.0)?;
             let mut predictions = Vec::new();
             for price in (500..1000).step_by(50).map(|x| x as f64){
                 predictions.push(predict(&current, price)?);
@@ -92,6 +90,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
             for price in (10000..=20000).step_by(1000).map(|x| x as f64){
                 predictions.push(predict(&current, price)?);
             }
+            
+            let rebalance_up = match predictions.iter().find(|&p| (p.short*6.0 <= p.long)) {
+                Some(prediction) => prediction.price,
+                _ => 0.0,
+            };
+            let rebalance_down = match predictions.iter().rev().find(|&p| p.long*36.0 <= p.short) {
+                Some(prediction) => prediction.price,
+                _ => 0.0,
+            };
 
             match sub_c {
                 "show" => {
@@ -125,9 +132,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     context.insert("eth_long", &long);
                     context.insert("usd_eur", &usd_eur);
                     context.insert("total", &total);
-                    context.insert("prediction_down", &prediction_down);
+                    context.insert("rebalance_down", &rebalance_down);
                     context.insert("current", &current);
-                    context.insert("prediction_up", &prediction_up);
+                    context.insert("rebalance_up", &rebalance_up);
                     context.insert("predictions", &predictions);
 
                     let html = tera.render("index.html", &context)?;
