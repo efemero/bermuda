@@ -1,4 +1,5 @@
 mod aave;
+mod compound;
 mod blockchain;
 mod erc20;
 mod chainlink;
@@ -6,9 +7,9 @@ mod smart_wallet;
 
 use std::collections::HashMap;
 
-pub use crate::blockchain::BlockchainReader;
 pub use crate::blockchain::HttpBlockchainReader;
 pub use crate::aave::Aave;
+pub use crate::compound::Compound;
 pub use crate::chainlink::Chainlink;
 pub use crate::smart_wallet::SmartWallet;
 pub use crate::erc20::ERC20;
@@ -23,7 +24,7 @@ use num_format::{Locale, ToFormattedString};
 #[macro_use]
 extern crate tera;
 
-const EXP_FACTOR:f64 = 2.35;
+const EXP_FACTOR:f64 = 2.6;
 
 pub fn humanize(value: &Value, _: &HashMap<String, Value>) -> Result<Value> {
     let num = try_get_value!("humanize", "value", f64, value);

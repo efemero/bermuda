@@ -4,8 +4,7 @@ extern crate tera;
 
 use async_jsonrpc_client::HttpTransport;
 use ethabi::Address;
-use bermuda::{Aave, humanize, Prediction, predict};
-use bermuda::BlockchainReader;
+use bermuda::{Aave, Compound, humanize, Prediction, predict};
 use bermuda::{Chainlink, SmartWallet};
 use bermuda::ERC20;
 use bermuda::HttpBlockchainReader;
@@ -19,6 +18,7 @@ const USDC_ADDRESS: &str = "A0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    
     let app_m = clap_app!(
         vault =>
         (version: "0.3.0")
@@ -26,13 +26,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         (about: "Get informations about your makerDAO vault.")
         (@subcommand show =>
          (@arg NODE: -n --node +takes_value default_value("http://localhost:8545") "Ethereum node to call" )
-         (@arg SHORT_SW: -s --short +takes_value +required "The address of the short smart wallet. This is not your ethereum address, but your smart wallet address in DefiSaver." )
-         (@arg LONG_SW: -l --long +takes_value +required "The address of the long smart wallet. This is not your ethereum address, but your smart wallet address in DefiSaver." )
+         (@arg SMART_WALLET: -s --sw +takes_value +required "The address of the smart wallet. This is not your ethereum address, but your smart wallet address in DefiSaver." )
         )
         (@subcommand html =>
           (@arg NODE: -n --node +takes_value default_value("http://localhost:8545") "Ethereum node to call" )
-         (@arg SHORT_SW: -s --short +takes_value +required "The address of the short smart wallet. This is not your ethereum address, but your smart wallet address in DefiSaver." )
-         (@arg LONG_SW: -l --long +takes_value +required +required "The address of the long smart wallet. This is not your ethereum address, but your smart wallet address in DefiSaver." )
+         (@arg SMART_WALLET: -s --sw +takes_value +required "The address of the smart wallet. This is not your ethereum address, but your smart wallet address in DefiSaver." )
           (@arg FILE: -f --file +takes_value default_value("index.html") "file name where to output the generated html" )
           (@arg EURUSD: -r --rate +takes_value default_value("1.06") "The price of 1€ in $" )
         ))
@@ -44,30 +42,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let transport = HttpTransport::new(node);
             let reader: HttpBlockchainReader = HttpBlockchainReader::new(transport)?;
             let aave = Aave::new(&reader)?;
+            let compound = Compound::new(&reader).await?;
             let chainlink = Chainlink::new(&reader)?;
             let dai = ERC20::new(&reader, DAI_ADDRESS.parse()?)?;
             let usdc = ERC20::new(&reader, USDC_ADDRESS.parse()?)?;
             let price = chainlink.get_eth_price().await?;
 
-            let smart_wallet_short = sub_m.value_of("SHORT_SW").unwrap();
-            let smart_wallet_short = smart_wallet_short.strip_prefix("0x").unwrap_or(smart_wallet_short);
-            let smart_wallet_short_contract = SmartWallet::new(&reader, smart_wallet_short)?;
-            let wallet_short: Address = smart_wallet_short_contract.get_owner().await?;
-            let short = aave.get_eth_value(smart_wallet_short).await?;
+            let smart_wallet = sub_m.value_of("SMART_WALLET").unwrap();
+            let smart_wallet = smart_wallet.strip_prefix("0x").unwrap_or(smart_wallet);
+            let smart_wallet_contract = SmartWallet::new(&reader, smart_wallet)?;
+            let wallet: Address = smart_wallet_contract.get_owner().await?;
+            let short = aave.get_eth_value(smart_wallet).await?;
+            let long = compound.get_eth_value(smart_wallet, price).await?;
 
-            let smart_wallet_long = sub_m.value_of("LONG_SW").unwrap();
-            let smart_wallet_long_contract = SmartWallet::new(&reader, smart_wallet_short)?;
-            let smart_wallet_long = smart_wallet_long.strip_prefix("0x").unwrap_or(smart_wallet_long);
-            let wallet_long: Address = smart_wallet_long_contract.get_owner().await?;
-            let long = aave.get_eth_value(smart_wallet_long).await?;
-            
-            let eth_value_short = reader.get_eth_balance(&wallet_short).await?;
-            let dai_eth_value_short = dai.get_value(&wallet_short).await? / price;
-            let dai_eth_value_short = dai_eth_value_short + (usdc.get_value(&wallet_short).await? / price);
-            let eth_value_long = reader.get_eth_balance(&wallet_long).await?;
-            let dai_eth_value_long = dai.get_value(&wallet_long).await? / price;
-            let dai_eth_value_long = dai_eth_value_long + (usdc.get_value(&wallet_long).await? / price);
-            let total = eth_value_short + eth_value_long + short + long + dai_eth_value_short + dai_eth_value_long;
+            let eth_value = reader.get_eth_balance(&wallet).await?;
+            let dai_eth_value = dai.get_value(&wallet).await? / price;
+            let dai_eth_value = dai_eth_value + (usdc.get_value(&wallet).await? / price);
+            let total = eth_value + short + long + dai_eth_value;
 
             let current = Prediction{                          
                 price,                                                                              
@@ -103,10 +94,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             match sub_c {
                 "show" => {
                     println!("eth price: {:.2} $", price);
-                    println!("eth wallet short: {:.2} eth ({:.2} $)", eth_value_short, eth_value_short * price);
-                    println!("dai wallet short: {:.2} eth ({:.2} $)", dai_eth_value_short, dai_eth_value_short * price);
-                    println!("eth wallet long: {:.2} eth ({:.2} $)", eth_value_long, eth_value_long * price);
-                    println!("dai wallet long: {:.2} eth ({:.2} $)", dai_eth_value_long, dai_eth_value_long * price);
+                    println!("eth wallet: {:.2} eth ({:.2} $)", eth_value, eth_value * price);
+                    println!("dai wallet: {:.2} eth ({:.2} $)", dai_eth_value, dai_eth_value * price);
                     println!("Short: {:.2} eth ({:.2} $)", short, short * price);
                     println!("Long: {:.2} eth ({:.2} $)", long, long * price);
                     println!("Total: {:.2} eth ({:.2} $)", total, total * price);
@@ -126,8 +115,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     let usd_eur = 1.0 / eur_usd;
                     let mut context = Context::new();
                     context.insert("eth_price", &price);
-                    context.insert("eth_value", &(eth_value_short + eth_value_long));
-                    context.insert("dai_eth_value", &(dai_eth_value_short + dai_eth_value_long));
+                    context.insert("eth_value", &(eth_value));
+                    context.insert("dai_eth_value", &(dai_eth_value));
                     context.insert("eth_short", &short);
                     context.insert("eth_long", &long);
                     context.insert("usd_eur", &usd_eur);

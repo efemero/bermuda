@@ -1,16 +1,16 @@
-use super::blockchain::BlockchainReader;
+use super::blockchain::HttpBlockchainReader;
 use ethabi::Uint;
 use ethabi::{Address, Contract};
 use std::error::Error;
 
 const CHAINLINK_ADDRESS: &str = "773616e4d11a78f511299002da57a0a94577f1f4";
 pub struct Chainlink<'a> {
-    blockchain_reader: &'a dyn BlockchainReader,
+    blockchain_reader: &'a HttpBlockchainReader,
     chainlink_address: Address,
     chainlink_contract: Contract,
 }
 impl<'a> Chainlink<'a> {
-    pub fn new(blockchain_reader: &'a (dyn BlockchainReader + 'a)) -> Result<Self, Box<dyn Error>> {
+    pub fn new(blockchain_reader: &'a HttpBlockchainReader ) -> Result<Self, Box<dyn Error>> {
         let chainlink_address: Address = CHAINLINK_ADDRESS.parse()?;
         let chainlink_abi: &[u8] = include_bytes!("abi/chainlink.abi");
         let chainlink_contract: Contract = Contract::load(chainlink_abi)?;
@@ -31,7 +31,7 @@ impl<'a> Chainlink<'a> {
             )
             .await?;
 
-        let price = tokens[0].clone().to_int();
+        let price = tokens[0].clone().into_int();
 
         let price = price.unwrap();
 

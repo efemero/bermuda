@@ -1,17 +1,17 @@
-use super::blockchain::BlockchainReader;
+use super::blockchain::HttpBlockchainReader;
 use ethabi::Uint;
 use ethabi::{Address, Contract, Token};
 use std::error::Error;
 
 
 pub struct ERC20<'a> {
-    blockchain_reader: &'a dyn BlockchainReader,
+    blockchain_reader: &'a HttpBlockchainReader,
     address: Address,
     contract: Contract,
     decimals: Option<usize>,
 }
 impl<'a> ERC20<'a> {
-    pub fn new(blockchain_reader: &'a (dyn BlockchainReader + 'a), address: Address) -> Result<Self, Box<dyn Error>> {
+    pub fn new(blockchain_reader: &'a HttpBlockchainReader, address: Address) -> Result<Self, Box<dyn Error>> {
         let abi: &[u8] = include_bytes!("abi/erc20.abi");
         let contract: Contract = Contract::load(abi)?;
         let decimals = None;
@@ -35,7 +35,7 @@ impl<'a> ERC20<'a> {
             )
             .await?;
 
-        let token = tokens[0].clone().to_uint();
+        let token = tokens[0].clone().into_uint();
         let token = token.unwrap();
 
         let decimals = self.get_decimals().await?;
@@ -59,7 +59,7 @@ impl<'a> ERC20<'a> {
                         )
                     .await?;
 
-                let token = tokens[0].clone().to_uint();
+                let token = tokens[0].clone().into_uint();
                 let value = token.unwrap();
                 let decimals = value.as_u32() as usize;
                 decimals

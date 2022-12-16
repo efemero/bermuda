@@ -9,26 +9,6 @@ use std::fmt;
 use web3::types::Bytes;
 use web3::types::CallRequest;
 
-use async_trait::async_trait;
-
-#[async_trait]
-pub trait BlockchainReader {
-    async fn call_function(
-        &self,
-        contract: &Contract,
-        contract_address: &Address,
-        name: &str,
-        params: &[Token],
-    ) -> Result<Vec<Token>, Box<dyn Error>>;
-
-    async fn get_storage_at(
-        &self,
-        address: &Address,
-        position: Uint,
-    ) -> Result<Vec<u8>, Box<dyn Error>>;
-    async fn get_eth_balance(&self, address: &Address) -> Result<f64, Box<dyn Error>>;
-}
-
 pub struct HttpBlockchainReader {
     transport: HttpTransport,
 }
@@ -37,11 +17,8 @@ impl HttpBlockchainReader {
     pub fn new(transport: HttpTransport) -> Result<Self, Box<dyn Error>> {
         Ok(Self { transport })
     }
-}
 
-#[async_trait]
-impl BlockchainReader for HttpBlockchainReader {
-    async fn call_function(
+    pub async fn call_function(
         &self,
         contract: &Contract,
         contract_address: &Address,
@@ -53,7 +30,7 @@ impl BlockchainReader for HttpBlockchainReader {
 
         let req = serde_json::to_value(CallRequest {
             from: None,
-            to: Some(*contract_address),
+            to: Some(web3::types::Address::from_slice(&contract_address.to_fixed_bytes())),
             gas: None,
             gas_price: None,
             value: None,
@@ -69,10 +46,11 @@ impl BlockchainReader for HttpBlockchainReader {
         Ok(result)
     }
 
-    async fn get_storage_at(
+    pub async fn get_storage_at(
         &self,
         address: &Address,
         position: Uint,
+        length: usize,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
         let params = Params::Array(vec![
             Value::String(format!("{:#x}", address)),
@@ -84,11 +62,11 @@ impl BlockchainReader for HttpBlockchainReader {
             "cannot retrieve response from eth_call",
         )))?[2..];
         let data: Vec<u8> = hex_str.from_hex()?;
-        let data: Vec<u8> = data.iter().rev().take(16).rev().cloned().collect();
+        let data: Vec<u8> = data.iter().rev().take(length).rev().cloned().collect();
         Ok(data)
     }
 
-    async fn get_eth_balance(&self, address: &Address) -> Result<f64, Box<dyn Error>> {
+    pub async fn get_eth_balance(&self, address: &Address) -> Result<f64, Box<dyn Error>> {
         let params = Params::Array(vec![
             Value::String(format!("{:#x}", address)),
             Value::String("latest".to_string()),
