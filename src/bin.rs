@@ -4,7 +4,7 @@ extern crate tera;
 
 use async_jsonrpc_client::HttpTransport;
 use ethabi::Address;
-use bermuda::{Aave, Compound, humanize, Prediction, predict};
+use bermuda::{Aave, Compound, humanize, Prediction, predict, initialize_bermuda, Equalize};
 use bermuda::{Chainlink, SmartWallet};
 use bermuda::ERC20;
 use bermuda::HttpBlockchainReader;
@@ -54,6 +54,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let wallet: Address = smart_wallet_contract.get_owner().await?;
             let short = aave.get_eth_value(smart_wallet).await?;
             let long = compound.get_eth_value(smart_wallet, price).await?;
+            
+            let sl = aave.get_loan(smart_wallet).await?;
+            let ll = compound.get_loan(smart_wallet, price).await?;
+            let equalize = initialize_bermuda(sl, ll)?;
 
             let eth_value = reader.get_eth_balance(&wallet).await?;
             let dai_eth_value = dai.get_value(&wallet).await? / price;
@@ -90,14 +94,45 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 Some(prediction) => prediction.price,
                 _ => 0.0,
             };
+            
+            let mut dai_to_flash_borrow = 0.0;
+            let mut eth_to_flash_borrow = 0.0;
+            if equalize.short_debt_delta < 0.0 {
+                eth_to_flash_borrow = -1.0 * equalize.short_debt_delta + equalize.long_col_delta;
+            } else {
+                dai_to_flash_borrow = -1.0 * equalize.long_debt_delta * price + equalize.short_col_delta * price;
+            }
 
             match sub_c {
                 "show" => {
                     println!("eth price: {:.2} $", price);
+                    println!("");
+
                     println!("eth wallet: {:.2} eth ({:.2} $)", eth_value, eth_value * price);
                     println!("dai wallet: {:.2} eth ({:.2} $)", dai_eth_value, dai_eth_value * price);
+                    println!("");
+
                     println!("Short: {:.2} eth ({:.2} $)", short, short * price);
                     println!("Long: {:.2} eth ({:.2} $)", long, long * price);
+                    println!("Long + short: {:.2} eth ({:.2} $)", long+short, (long+short) * price);
+                    println!("");
+                    if dai_to_flash_borrow == 0.0 {
+                            println!("Flash borrow {:.2} eth", eth_to_flash_borrow);
+                            println!("Short (AAVE): Repay {:.2} eth of debt and withdraw {:.2} $ of collateral", (-1.0 * equalize.short_debt_delta), (-1.0 * equalize.short_col_delta * price));
+                            println!("Long (Compound): Add {:.2} eth of collateral and borrow {:.2} $", equalize.long_col_delta, equalize.long_debt_delta * price);
+                            println!("Sell ~ {:.2} $ for {:.2} eth", eth_to_flash_borrow * price, eth_to_flash_borrow);
+                            println!("Flash repay {:.2} eth", eth_to_flash_borrow);
+                    } else {
+                            println!("Flash borrow {:.2} $", dai_to_flash_borrow);
+                            println!("Long (Compound): Repay {:.2} $ of debt and withdraw {:.2} eth of collateral", (-1.0 *equalize.long_debt_delta * price), (-1.0 * equalize.long_col_delta));
+                            println!("Short (AAVE): Add {:.2} $ of collateral and borrow {:.2} eth", equalize.short_col_delta * price, equalize.short_debt_delta);
+                            let eth_to_sell = equalize.short_debt_delta - equalize.long_col_delta;
+                            println!("Sell {:.2} eth for ~ {:.2} $", eth_to_sell, eth_to_sell*price);
+                            println!("Flash repay {:.2} $", dai_to_flash_borrow);
+                    }
+                    println!("Keep ~ {:.2} $", equalize.keep * price);
+                    println!("");
+
                     println!("Total: {:.2} eth ({:.2} $)", total, total * price);
                 }
                 "html" => {

@@ -1,4 +1,5 @@
 use super::blockchain::HttpBlockchainReader;
+use super::Loan;
 use ethabi::Uint;
 use ethabi::{Address, Contract, Token};
 use std::error::Error;
@@ -21,8 +22,8 @@ impl<'a> Aave<'a> {
         })
     }
 
-    pub async fn get_eth_value(&self, address: &str) -> Result<f64, Box<dyn Error>> {
-        let tokens = self
+    pub async fn get_loan(&self, address: &str) -> Result<Loan, Box<dyn Error>> {
+         let tokens = self
             .blockchain_reader
             .call_function(
                 &self.aave_contract,
@@ -34,12 +35,18 @@ impl<'a> Aave<'a> {
 
         let col = tokens[0].clone().into_uint();
         let col = col.unwrap();
+        let col = (col.as_u128() as f64) / Uint::exp10(18).as_u128() as f64;
+
         let debt = tokens[1].clone().into_uint();
         let debt = debt.unwrap();
+        let debt = (debt.as_u128() as f64) / Uint::exp10(18).as_u128() as f64;
 
-        let eth_value =
-            (col.as_u128() as f64 - debt.as_u128() as f64) / Uint::exp10(18).as_u128() as f64;
+        Ok(Loan{collateral:col, debt})
 
-        Ok(eth_value)
+   }
+
+    pub async fn get_eth_value(&self, address: &str) -> Result<f64, Box<dyn Error>> {
+        let loan = self.get_loan(address).await?;
+        Ok(loan.collateral-loan.debt)
     }
 }

@@ -44,6 +44,52 @@ pub struct Prediction {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+pub struct Loan {
+    pub collateral: f64,
+    pub debt: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Equalize {
+    pub keep: f64,
+    pub short_col_delta: f64,
+    pub short_debt_delta: f64,
+    pub long_col_delta: f64,
+    pub long_debt_delta: f64,
+}
+
+pub fn initialize_bermuda(short: Loan, long: Loan) -> Result<Equalize> {
+    // the target ratio coll / debt for each loan
+    let target_ratio = 1.5;
+    let total_col = short.collateral + long.collateral;
+    let total_debt = short.debt + long.debt;
+    let total_value = total_col - total_debt;
+
+    // keep 10%
+    let keep = total_value / 10.0;
+    let total_value = total_value - keep;
+    let short_value = total_value * 2.0 / 3.0;
+    let long_value = total_value - short_value;
+    let target_short = Loan{
+        collateral:short_value * target_ratio / (target_ratio - 1.0),
+        debt:short_value / (target_ratio - 1.0)
+    };
+    let target_long = Loan{
+        collateral:long_value * target_ratio / (target_ratio - 1.0),
+        debt:long_value / (target_ratio - 1.0)
+    };
+
+    Ok(Equalize {
+        keep,
+        short_col_delta : target_short.collateral - short.collateral,
+        short_debt_delta : target_short.debt - short.debt,
+        long_col_delta : target_long.collateral - long.collateral,
+        long_debt_delta : target_long.debt - long.debt,
+    })
+
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 enum Direction {
     Up,
     Down

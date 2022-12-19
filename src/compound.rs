@@ -1,4 +1,5 @@
 use super::blockchain::HttpBlockchainReader;
+use super::Loan;
 use ethabi::Uint;
 use ethabi::{Address, Contract, Token};
 use std::error::Error;
@@ -13,9 +14,6 @@ pub struct Compound<'a> {
 impl<'a> Compound<'a> {
     pub async fn new(blockchain_reader: &'a HttpBlockchainReader ) -> Result<Compound<'a>, Box<dyn Error>> {
         let compound_address: Address = COMPOUND_ADDRESS.parse()?;
-        let storage_slot: Uint = "360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc".parse()?;
-        let implementation_address: &[u8] = &blockchain_reader.get_storage_at(&compound_address, storage_slot, 20).await?;
-//        let compound_address: Address = Address::from_slice(implementation_address);
         let compound_abi: &[u8] = include_bytes!("abi/cUSDCv3.abi");
         let compound_contract: Contract = Contract::load(compound_abi)?;
         Ok(Self {
@@ -67,12 +65,15 @@ impl<'a> Compound<'a> {
         Ok(eth_value)
     }
 
-    pub async fn get_eth_value(&self, owner_address: &str, eth_price: f64) -> Result<f64, Box<dyn Error>> {
-        dbg!(owner_address);
-        let col = self.get_eth_col(owner_address).await?;
-        dbg!(col);
+    pub async fn get_loan(&self, owner_address: &str, eth_price: f64) -> Result<Loan, Box<dyn Error>> {
+        let col =  self.get_eth_col(owner_address).await?;
         let debt = self.get_eth_debt(owner_address, eth_price).await?;
-        dbg!(debt);
+        Ok(Loan{collateral:col, debt})
+    }
+
+    pub async fn get_eth_value(&self, owner_address: &str, eth_price: f64) -> Result<f64, Box<dyn Error>> {
+        let col = self.get_eth_col(owner_address).await?;
+        let debt = self.get_eth_debt(owner_address, eth_price).await?;
 
         let eth_value = col - debt;
 
