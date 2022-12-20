@@ -27,7 +27,7 @@ extern crate tera;
 const EXP_FACTOR:f64 = 2.6;
 
 pub fn humanize(value: &Value, _: &HashMap<String, Value>) -> Result<Value> {
-    let num = try_get_value!("humanize", "value", f64, value);
+    let num = try_get_value!("humanize", "value", f64, value.clone());
     match num {
         x if x < 10.0 => Ok(to_value(format!("{:.2}", x)).unwrap()),
         x if x < 100.0 => Ok(to_value(format!("{:.1}", x)).unwrap()),
@@ -50,24 +50,36 @@ pub struct Loan {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Equalize {
-    pub keep: f64,
-    pub short_col_delta: f64,
-    pub short_debt_delta: f64,
-    pub long_col_delta: f64,
-    pub long_debt_delta: f64,
+pub enum Currency {
+    ETH,
+    USDC
 }
 
-pub fn initialize_bermuda(short: Loan, long: Loan) -> Result<Equalize> {
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Equalize {
+    pub eth_price: f64,
+    pub flash_loan_currency: Currency,
+    pub flash_loan_value: f64,
+    pub keep_usdc: f64,
+    pub short_col_delta_usdc: f64,
+    pub short_debt_delta_eth: f64,
+    pub long_col_delta_eth: f64,
+    pub long_debt_delta_usdc: f64,
+}
+
+pub fn initialize_bermuda(short: Loan, long: Loan, eth_price: f64) -> Result<Equalize> {
     // the target ratio coll / debt for each loan
     let target_ratio = 1.5;
+    // the part of the treasure to extract
+    let keep_ratio = 0.1;
     let total_col = short.collateral + long.collateral;
     let total_debt = short.debt + long.debt;
     let total_value = total_col - total_debt;
 
     // keep 10%
-    let keep = total_value / 10.0;
-    let total_value = total_value - keep;
+    let keep_eth = total_value * keep_ratio;
+    let keep_usdc = keep_eth * eth_price;
+    let total_value = total_value - keep_eth;
     let short_value = total_value * 2.0 / 3.0;
     let long_value = total_value - short_value;
     let target_short = Loan{
@@ -78,13 +90,38 @@ pub fn initialize_bermuda(short: Loan, long: Loan) -> Result<Equalize> {
         collateral:long_value * target_ratio / (target_ratio - 1.0),
         debt:long_value / (target_ratio - 1.0)
     };
-
+    let flash_loan_currency: Currency = match short.collateral > target_short.collateral {
+        true => Currency::ETH,
+        false => Currency::USDC,
+    };
+    let (short_col_delta_usdc, short_debt_delta_eth, long_col_delta_eth, long_debt_delta_usdc) = match flash_loan_currency {
+        Currency::ETH => (
+            -1.0 * (target_short.collateral - short.collateral) * eth_price,
+            -1.0 * (target_short.debt - short.debt),
+            target_long.collateral - long.collateral,
+            (target_long.debt - long.debt) * eth_price,
+            ),
+        Currency::USDC => (
+            (target_short.collateral - short.collateral) * eth_price,
+            target_short.debt - short.debt,
+            -1.0 * (target_long.collateral - long.collateral),
+            -1.0 * (target_long.debt - long.debt) * eth_price,
+            ),
+    };
+        
+    let flash_loan_value: f64 = match short.collateral > target_short.collateral {
+        true => short_debt_delta_eth + long_col_delta_eth,
+        false => short_col_delta_usdc + long_debt_delta_usdc
+    };
     Ok(Equalize {
-        keep,
-        short_col_delta : target_short.collateral - short.collateral,
-        short_debt_delta : target_short.debt - short.debt,
-        long_col_delta : target_long.collateral - long.collateral,
-        long_debt_delta : target_long.debt - long.debt,
+        eth_price,
+        flash_loan_currency,
+        flash_loan_value,
+        keep_usdc,
+        short_col_delta_usdc,
+        short_debt_delta_eth,
+        long_col_delta_eth ,
+        long_debt_delta_usdc,
     })
 
 }
